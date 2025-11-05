@@ -165,7 +165,7 @@ class Plugin implements PluginInterface
             null,
             '',
             _t('Client ID'),
-            _t('OAuth2 客户端 ID')
+            _t('OIDC 客户端 ID')
         );
         $form->addInput($clientId->addRule('required', _t('请输入 Client ID')));
 
@@ -174,7 +174,7 @@ class Plugin implements PluginInterface
             null,
             '',
             _t('Client Secret'),
-            _t('OAuth2 客户端密钥')
+            _t('OIDC 客户端密钥')
         );
         $form->addInput($clientSecret->addRule('required', _t('请输入 Client Secret')));
 
@@ -183,7 +183,7 @@ class Plugin implements PluginInterface
             null,
             'openid email profile',
             _t('Scope'),
-            _t('OAuth2 作用域')
+            _t('OIDC 作用域')
         );
         $form->addInput($scope);
 

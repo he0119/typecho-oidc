@@ -105,7 +105,7 @@ class Action extends Base implements ActionInterface
         $authorizeUrl .= '&scope=' . urlencode($this->pluginConfig->scope);
         $authorizeUrl .= '&state=' . urlencode($state);
 
-        // 重定向到 OAuth2 授权页面
+        // 重定向到 OIDC 授权页面
         $this->response->redirect($authorizeUrl);
     }
 
