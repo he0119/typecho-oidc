@@ -3,7 +3,6 @@ namespace TypechoPlugin\Oidc;
 
 use Typecho\Db;
 use Typecho\Common;
-use Widget\Notice;
 use Widget\Security;
 use Widget\User;
 use Widget\Options;
@@ -46,16 +45,6 @@ $systemName = !empty($pluginConfig->oidcSystemName) ? $pluginConfig->oidcSystemN
         <?php include 'page-title.php'; ?>
         <div class="row typecho-page-main" role="main">
             <div class="col-mb-12 typecho-list">
-
-                <?php Notice::alloc()->to($notice); ?>
-                <?php if ($notice->have()): ?>
-                    <div class="message <?php echo $notice->type; ?>">
-                        <ul>
-                            <li><?php echo $notice->message; ?></li>
-                        </ul>
-                    </div>
-                <?php endif; ?>
-
                 <?php if (!empty($bindings)): ?>
                     <h4 class="typecho-list-table-title"><?php _e('已绑定的 %s 账户', $systemName); ?></h4>
                 <?php endif; ?>
