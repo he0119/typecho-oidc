@@ -258,24 +258,11 @@ class Action extends Base implements ActionInterface
     private function handleBinding($userInfo)
     {
         // 检查用户是否已经登录
-        if ($this->user->hasLogin()) {
-            // 用户已登录，直接执行绑定
-            $this->performBinding($userInfo, $this->user->uid);
-            return;
+        if (!$this->user->hasLogin()) {
+            // 用户未登录，提示需要先登录
+            $this->loginError('请先登录 Typecho 账户，然后在 OIDC 绑定管理页面进行绑定');
         }
 
-        // 用户未登录，提示需要先登录
-        $this->loginError('请先登录 Typecho 账户，然后在 OIDC 账户绑定管理页面进行绑定');
-    }
-
-    /**
-     * 执行绑定操作
-     * 
-     * @param array $userInfo OIDC 用户信息
-     * @param int $uid Typecho 用户 ID
-     */
-    private function performBinding($userInfo, $uid)
-    {
         try {
             $db = Db::get();
             $prefix = $db->getPrefix();
@@ -295,7 +282,7 @@ class Action extends Base implements ActionInterface
             $db->query(
                 $db->insert($prefix . 'oidc_bindings')
                     ->rows(array(
-                        'uid' => $uid,
+                        'uid' => $this->user->uid,
                         'iss' => $userInfo['iss'],
                         'sub' => $userInfo['sub'],
                         'created_at' => time()
@@ -304,7 +291,7 @@ class Action extends Base implements ActionInterface
 
             // 确保用户已登录
             if (!$this->user->hasLogin()) {
-                $this->user->simpleLogin($uid, false);
+                $this->user->simpleLogin($this->user->uid, false);
             }
 
             // 添加成功提示
