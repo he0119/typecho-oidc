@@ -246,7 +246,7 @@ class Action extends Base implements ActionInterface
             }
         } catch (Exception $e) {
             error_log('OIDC 登录错误: ' . $e->getMessage());
-            $this->loginError('登录过程中发生错误,请稍后重试');
+            $this->loginError('登录过程中发生错误，请稍后重试');
         }
     }
 
@@ -303,7 +303,7 @@ class Action extends Base implements ActionInterface
 
         } catch (Exception $e) {
             error_log('OIDC 绑定错误: ' . $e->getMessage());
-            $this->loginError('绑定过程中发生错误: ' . $e->getMessage());
+            $this->loginError('绑定过程中发生错误，请稍后重试');
         }
     }
 
