@@ -1,4 +1,12 @@
 <?php
+use Typecho\Db;
+use Typecho\Common;
+use Typecho\Response;
+use Widget\Notice;
+use Widget\Security;
+use Widget\User;
+use Widget\Options;
+
 if (!defined('__TYPECHO_ROOT_DIR__'))
     exit;
 
@@ -7,24 +15,25 @@ include 'common.php';
 include 'header.php';
 include 'menu.php';
 
+// 获取配置
+$options = Options::alloc();
+$pluginConfig = $options->plugin('Oidc');
+
 // 获取当前用户
-$user = Typecho_Widget::widget('Widget_User');
+$user = User::alloc();
 if (!$user->hasLogin()) {
-    Typecho_Response::getInstance()->redirect(Typecho_Common::url('admin/login.php', $options->index));
+    header('Location: ' . Common::url('admin/login.php', $options->index));
     exit;
 }
 
-// 获取配置
-$options = Typecho_Widget::widget('Widget_Options');
-$pluginConfig = $options->plugin('Oidc');
-$db = Typecho_Db::get();
+$db = Db::get();
 $prefix = $db->getPrefix();
 
 // 获取当前用户的所有绑定
 $bindings = $db->fetchAll(
     $db->select()->from($prefix . 'oidc_bindings')
         ->where('uid = ?', $user->uid)
-        ->order('created_at', Typecho_Db::SORT_DESC)
+        ->order('created_at', Db::SORT_DESC)
 );
 
 // 获取系统名称
@@ -37,7 +46,7 @@ $systemName = !empty($pluginConfig->oidcSystemName) ? $pluginConfig->oidcSystemN
         <div class="row typecho-page-main" role="main">
             <div class="col-mb-12 typecho-list">
 
-                <?php Typecho_Widget::widget('Widget_Notice')->to($notice); ?>
+                <?php Notice::alloc()->to($notice); ?>
                 <?php if ($notice->have()): ?>
                     <div class="message <?php echo $notice->type; ?>">
                         <ul>
@@ -72,8 +81,8 @@ $systemName = !empty($pluginConfig->oidcSystemName) ? $pluginConfig->oidcSystemN
                                     <p style="margin: 0 0 15px 0; font-size: 14px;">
                                         <?php _e('暂无绑定的 %s 账户', $systemName); ?>
                                     </p>
-                                    <a href="<?php echo Typecho_Common::url('/oidc/login', $options->index); ?>"
-                                        class="btn primary" style="margin-top: 10px;">
+                                    <a href="<?php echo Common::url('/oidc/login', $options->index); ?>" class="btn primary"
+                                        style="margin-top: 10px;">
                                         <?php _e('立即绑定 %s 账户', $systemName); ?>
                                     </a>
                                 </td>
@@ -102,12 +111,11 @@ $systemName = !empty($pluginConfig->oidcSystemName) ? $pluginConfig->oidcSystemN
                                         <?php echo date('Y-m-d H:i:s', $binding['created_at']); ?>
                                     </td>
                                     <td>
-                                        <form method="post"
-                                            action="<?php echo Typecho_Common::url('/oidc/unbind', $options->index); ?>"
+                                        <form method="post" action="<?php echo Common::url('/oidc/unbind', $options->index); ?>"
                                             style="display: inline;">
-                                            <?php Typecho_Widget::widget('Widget_Security')->to($security); ?>
+                                            <?php Security::alloc()->to($security); ?>
                                             <input type="hidden" name="_"
-                                                value="<?php echo $security->getToken(Typecho_Common::url('admin/extending.php?panel=Oidc%2FPanel.php', $options->index)); ?>" />
+                                                value="<?php echo $security->getToken(Common::url('admin/extending.php?panel=Oidc%2FPanel.php', $options->index)); ?>" />
                                             <input type="hidden" name="binding_id" value="<?php echo $binding['id']; ?>" />
                                             <button type="submit" class="unbind-btn">
                                                 <?php _e('解绑'); ?>

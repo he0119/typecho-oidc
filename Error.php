@@ -1,11 +1,14 @@
 <?php
+use Typecho\Common;
+use Widget\Options;
+
 if (!defined('__TYPECHO_ROOT_DIR__'))
     exit;
 
-$options = Typecho_Widget::widget('Widget_Options');
+$options = Options::alloc();
 $siteTitle = $options->title;
-$indexUrl = Typecho_Common::url('/', $options->index);
-$loginUrl = Typecho_Common::url('admin/login.php', $options->index);
+$indexUrl = Common::url('/', $options->index);
+$loginUrl = Common::url('admin/login.php', $options->index);
 ?>
 <!DOCTYPE HTML>
 <html>
@@ -16,9 +19,9 @@ $loginUrl = Typecho_Common::url('admin/login.php', $options->index);
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
     <title><?php _e('OIDC 登录错误'); ?> - <?php echo htmlspecialchars($siteTitle); ?></title>
     <meta name="robots" content="noindex, nofollow">
-    <link rel="stylesheet" href="<?php echo Typecho_Common::url('admin/css/normalize.css', $options->index); ?>">
-    <link rel="stylesheet" href="<?php echo Typecho_Common::url('admin/css/grid.css', $options->index); ?>">
-    <link rel="stylesheet" href="<?php echo Typecho_Common::url('admin/css/style.css', $options->index); ?>">
+    <link rel="stylesheet" href="<?php echo Common::url('admin/css/normalize.css', $options->index); ?>">
+    <link rel="stylesheet" href="<?php echo Common::url('admin/css/grid.css', $options->index); ?>">
+    <link rel="stylesheet" href="<?php echo Common::url('admin/css/style.css', $options->index); ?>">
     <style>
         .typecho-login-wrap {
             display: table;

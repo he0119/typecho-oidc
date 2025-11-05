@@ -1,20 +1,33 @@
 <?php
+namespace TypechoPlugin\Oidc;
+
+use Typecho\Plugin\PluginInterface;
+use Typecho\Plugin\Exception;
+use Typecho\Widget\Helper\Form;
+use Typecho\Db;
+use Utils\Helper;
+use Widget\Options;
+
+if (!defined('__TYPECHO_ROOT_DIR__')) {
+    exit;
+}
+
 /**
  * OpenID Connect 插件
  * 
  * @package Oidc
  * @author uy/sun
  * @version 0.1.0
- * @link https://hehome.xyz/
+ * @link https://github.com/he0119/typecho-oidc
  */
-class Oidc_Plugin implements Typecho_Plugin_Interface
+class Oidc_Plugin implements PluginInterface
 {
     /**
      * 激活插件方法
      * 
      * @access public
      * @return string
-     * @throws Typecho_Plugin_Exception
+     * @throws Exception
      */
     public static function activate()
     {
@@ -36,11 +49,11 @@ class Oidc_Plugin implements Typecho_Plugin_Interface
      * 创建 OIDC 绑定表
      * 
      * @access private
-     * @throws Typecho_Plugin_Exception
+     * @throws Exception
      */
     private static function createBindingTable()
     {
-        $db = Typecho_Db::get();
+        $db = Db::get();
         $prefix = $db->getPrefix();
         $adapter = $db->getAdapterName();
 
@@ -81,13 +94,13 @@ class Oidc_Plugin implements Typecho_Plugin_Interface
                 UNIQUE(iss, sub)
             );";
         } else {
-            throw new Typecho_Plugin_Exception(_t('不支持的数据库类型'));
+            throw new Exception(_t('不支持的数据库类型'));
         }
 
         try {
             $db->query($sql);
         } catch (Exception $e) {
-            throw new Typecho_Plugin_Exception(_t('创建 OIDC 绑定表失败: ') . $e->getMessage());
+            throw new Exception(_t('创建 OIDC 绑定表失败: ') . $e->getMessage());
         }
     }
 
@@ -117,12 +130,12 @@ class Oidc_Plugin implements Typecho_Plugin_Interface
      * 获取插件配置面板
      * 
      * @access public
-     * @param Typecho_Widget_Helper_Form $form 配置面板
+     * @param Form $form 配置面板
      */
-    public static function config(Typecho_Widget_Helper_Form $form)
+    public static function config(Form $form)
     {
         // 添加 OIDC 发现文档 URL 配置
-        $discoveryUrl = new Typecho_Widget_Helper_Form_Element_Text(
+        $discoveryUrl = new Form\Element\Text(
             'discoveryUrl',
             null,
             '',
@@ -132,7 +145,7 @@ class Oidc_Plugin implements Typecho_Plugin_Interface
         $form->addInput($discoveryUrl);
 
 
-        $oidcSystemName = new Typecho_Widget_Helper_Form_Element_Text(
+        $oidcSystemName = new Form\Element\Text(
             'oidcSystemName',
             null,
             '单点登录',
@@ -141,7 +154,7 @@ class Oidc_Plugin implements Typecho_Plugin_Interface
         );
         $form->addInput($oidcSystemName->addRule('required', _t('请输入 OIDC 系统名称')));
 
-        $clientId = new Typecho_Widget_Helper_Form_Element_Text(
+        $clientId = new Form\Element\Text(
             'clientId',
             null,
             '',
@@ -150,7 +163,7 @@ class Oidc_Plugin implements Typecho_Plugin_Interface
         );
         $form->addInput($clientId->addRule('required', _t('请输入 Client ID')));
 
-        $clientSecret = new Typecho_Widget_Helper_Form_Element_Text(
+        $clientSecret = new Form\Element\Text(
             'clientSecret',
             null,
             '',
@@ -159,7 +172,7 @@ class Oidc_Plugin implements Typecho_Plugin_Interface
         );
         $form->addInput($clientSecret->addRule('required', _t('请输入 Client Secret')));
 
-        $scope = new Typecho_Widget_Helper_Form_Element_Text(
+        $scope = new Form\Element\Text(
             'scope',
             null,
             'openid email profile',
@@ -174,9 +187,9 @@ class Oidc_Plugin implements Typecho_Plugin_Interface
      * 个人用户的配置面板
      * 
      * @access public
-     * @param Typecho_Widget_Helper_Form $form
+     * @param Form $form
      */
-    public static function personalConfig(Typecho_Widget_Helper_Form $form)
+    public static function personalConfig(Form $form)
     {
     }
 
@@ -185,7 +198,7 @@ class Oidc_Plugin implements Typecho_Plugin_Interface
      */
     public static function renderLoginButton()
     {
-        $options = Typecho_Widget::widget('Widget_Options');
+        $options = Options::alloc();
         $pluginConfig = $options->plugin('Oidc');
 
         // 检查配置是否完整
