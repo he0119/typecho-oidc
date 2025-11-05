@@ -5,6 +5,7 @@ use Typecho\Plugin\PluginInterface;
 use Typecho\Plugin\Exception;
 use Typecho\Widget\Helper\Form;
 use Typecho\Db;
+use Typecho\Common;
 use Utils\Helper;
 use Widget\Options;
 
@@ -31,18 +32,25 @@ class Plugin implements PluginInterface
      */
     public static function activate()
     {
-        // 注册路由 - Typecho 1.2.1 兼容方式
+        // 校验版本是否为 1.2.0+
+        if (version_compare(Common::VERSION, '1.2.0', '<')) {
+            throw new Exception('此插件仅支持 1.2.0 及以上版本的 Typecho 程序');
+        }
+
+        // 注册 Action 路由（用于 unbind 等管理操作）
+        Helper::addAction('oidc', 'Oidc_Action');
+
+        // 注册公开路由
         Helper::addRoute('oidc_login', '/oidc/login', 'Oidc_Action', 'login');
         Helper::addRoute('oidc_callback', '/oidc/callback', 'Oidc_Action', 'callback');
-        Helper::addRoute('oidc_unbind', '/oidc/unbind', 'Oidc_Action', 'unbind');
-
-        // 创建 OIDC 绑定表
-        self::createBindingTable();
 
         // 添加管理面板
         Helper::addPanel(1, 'Oidc/Panel.php', _t('OIDC 绑定'), _t('管理 OIDC 账户绑定'), 'subscriber');
 
-        return _t('插件已激活，请配置 OAuth2 参数');
+        // 创建 OIDC 绑定表
+        self::createBindingTable();
+
+        return _t('插件已激活，请配置 OIDC 参数');
     }
 
     /**
@@ -99,7 +107,7 @@ class Plugin implements PluginInterface
 
         try {
             $db->query($sql);
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
             throw new Exception(_t('创建 OIDC 绑定表失败: ') . $e->getMessage());
         }
     }
@@ -112,10 +120,12 @@ class Plugin implements PluginInterface
      */
     public static function deactivate()
     {
-        // 移除路由
+        // 移除 Action
+        Helper::removeAction('oidc');
+
+        // 移除公开路由
         Helper::removeRoute('oidc_login');
         Helper::removeRoute('oidc_callback');
-        Helper::removeRoute('oidc_unbind');
 
         // 移除管理面板
         Helper::removePanel(1, 'Oidc/Panel.php');
@@ -207,7 +217,7 @@ class Plugin implements PluginInterface
         }
 
         // 构建登录 URL
-        $loginUrl = $options->index . '/oidc/login';
+        $loginUrl = Common::url('/oidc/login', $options->index);
 
         // 获取系统名称
         $systemName = !empty($pluginConfig->oidcSystemName) ? $pluginConfig->oidcSystemName : '单点登录';

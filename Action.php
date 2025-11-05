@@ -4,6 +4,7 @@ namespace TypechoPlugin\Oidc;
 use Typecho\Widget;
 use Typecho\Db;
 use Typecho\Common;
+use Widget\ActionInterface;
 use Widget\Notice;
 use Widget\Security;
 use Widget\User;
@@ -14,15 +15,38 @@ if (!defined('__TYPECHO_ROOT_DIR__')) {
     exit;
 }
 
-class Action extends Widget implements \Widget\ActionInterface
+class Action extends Widget implements ActionInterface
 {
     // ==================== 公共接口方法 ====================
 
     /**
-     * 动作接口
+     * 动作接口 - 根据 do 参数分发请求
+     * 所有通过 action 的操作都需要登录和 CSRF 保护
      */
     public function action()
     {
+        $options = Options::alloc();
+
+        // 检查用户是否登录
+        $user = User::alloc();
+        if (!$user->hasLogin()) {
+            $this->response->redirect(Common::url('admin/login.php', $options->index));
+            exit;
+        }
+
+        // CSRF 保护
+        Security::alloc()->protect();
+
+        $do = $this->request->get('do');
+
+        switch ($do) {
+            case 'unbind':
+                $this->unbind();
+                break;
+            default:
+                $this->response->setStatus(404);
+                exit;
+        }
     }
 
     /**
@@ -60,7 +84,7 @@ class Action extends Widget implements \Widget\ActionInterface
         );
 
         // 构建授权 URL
-        $redirectUri = $options->index . '/oidc/callback';
+        $redirectUri = Common::url('/oidc/callback', $options->index);
 
         // 获取授权端点
         $discoveryData = $this->getDiscoveryData($pluginConfig->discoveryUrl);
@@ -131,20 +155,12 @@ class Action extends Widget implements \Widget\ActionInterface
 
     /**
      * 解绑 OIDC 账户
+     * 注意：登录检查和 CSRF 保护已在 action() 方法中完成
      */
     public function unbind()
     {
         $options = Options::alloc();
-
-        // 检查用户是否登录
         $user = User::alloc();
-        if (!$user->hasLogin()) {
-            $this->response->redirect(Common::url('admin/login.php', $options->index));
-            exit;
-        }
-
-        // CSRF 保护
-        Security::alloc()->protect();
 
         $bindingId = $this->request->get('binding_id');
         if (empty($bindingId)) {
@@ -338,7 +354,7 @@ class Action extends Widget implements \Widget\ActionInterface
             $tokenUrl = rtrim($pluginConfig->oauthUrl, '/') . '/oauth2/token';
         }
 
-        $redirectUri = $options->index . '/oidc/callback';
+        $redirectUri = Common::url('/oidc/callback', $options->index);
 
         // 构建请求头
         $authString = $pluginConfig->clientId . ':' . $pluginConfig->clientSecret;

@@ -101,7 +101,8 @@ $systemName = !empty($pluginConfig->oidcSystemName) ? $pluginConfig->oidcSystemN
                                         <?php echo date('Y-m-d H:i:s', $binding['created_at']); ?>
                                     </td>
                                     <td>
-                                        <form method="post" action="<?php echo Common::url('/oidc/unbind', $options->index); ?>"
+                                        <form method="post"
+                                            action="<?php echo Common::url('action/oidc?do=unbind', $options->index); ?>"
                                             style="display: inline;">
                                             <?php Security::alloc()->to($security); ?>
                                             <input type="hidden" name="_"
