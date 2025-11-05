@@ -1,7 +1,8 @@
 <?php
+namespace TypechoPlugin\Oidc;
+
 use Typecho\Db;
 use Typecho\Common;
-use Typecho\Response;
 use Widget\Notice;
 use Widget\Security;
 use Widget\User;

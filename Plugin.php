@@ -14,17 +14,17 @@ if (!defined('__TYPECHO_ROOT_DIR__')) {
 
 /**
  * OpenID Connect 插件
- * 
+ *
  * @package Oidc
  * @author uy/sun
  * @version 0.1.0
  * @link https://github.com/he0119/typecho-oidc
  */
-class Oidc_Plugin implements PluginInterface
+class Plugin implements PluginInterface
 {
     /**
      * 激活插件方法
-     * 
+     *
      * @access public
      * @return string
      * @throws Exception
@@ -47,7 +47,7 @@ class Oidc_Plugin implements PluginInterface
 
     /**
      * 创建 OIDC 绑定表
-     * 
+     *
      * @access private
      * @throws Exception
      */
@@ -106,7 +106,7 @@ class Oidc_Plugin implements PluginInterface
 
     /**
      * 禁用插件方法
-     * 
+     *
      * @access public
      * @return string
      */
@@ -128,7 +128,7 @@ class Oidc_Plugin implements PluginInterface
 
     /**
      * 获取插件配置面板
-     * 
+     *
      * @access public
      * @param Form $form 配置面板
      */
@@ -185,7 +185,7 @@ class Oidc_Plugin implements PluginInterface
 
     /**
      * 个人用户的配置面板
-     * 
+     *
      * @access public
      * @param Form $form
      */

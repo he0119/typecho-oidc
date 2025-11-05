@@ -1,4 +1,6 @@
 <?php
+namespace TypechoPlugin\Oidc;
+
 use Typecho\Common;
 use Widget\Options;
 
