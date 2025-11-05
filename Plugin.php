@@ -208,7 +208,7 @@ class Plugin implements PluginInterface
         $pluginConfig = $options->plugin('Oidc');
 
         // 检查配置是否完整
-        if (empty($pluginConfig->discoveryUrl) && (empty($pluginConfig->oauthUrl) || empty($pluginConfig->clientId))) {
+        if (empty($pluginConfig->discoveryUrl) && empty($pluginConfig->clientId)) {
             return;
         }
 
