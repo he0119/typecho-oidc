@@ -356,22 +356,14 @@ class Action extends Base implements ActionInterface
 
         $request = $this->buildTokenRequest($postData, $authMethods);
 
-        // 发送请求
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $discoveryData['token_endpoint']);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($request['post_data']));
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $request['headers']);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);
-
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlError = curl_error($ch);
+        list($response, $httpCode, $curlError) = self::httpRequest(
+            $discoveryData['token_endpoint'],
+            'POST',
+            $request['headers'],
+            http_build_query($request['post_data']),
+            30,
+            10
+        );
 
         if (!empty($curlError)) {
             self::logSafe('OIDC: 获取 Token 失败 - ' . $curlError);
@@ -487,21 +479,14 @@ class Action extends Base implements ActionInterface
         }
 
         // 调用 UserInfo 端点
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $discoveryData['userinfo_endpoint']);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, array(
-            'Authorization: Bearer ' . $accessToken
-        ));
-
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlError = curl_error($ch);
+        list($response, $httpCode, $curlError) = self::httpRequest(
+            $discoveryData['userinfo_endpoint'],
+            'GET',
+            array('Authorization: Bearer ' . $accessToken),
+            null,
+            10,
+            5
+        );
 
         if (!empty($curlError)) {
             self::logSafe('OIDC: 获取 UserInfo 失败 - ' . $curlError);
@@ -550,18 +535,14 @@ class Action extends Base implements ActionInterface
         }
 
         // 获取发现文档
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $this->pluginConfig->discoveryUrl);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);
-
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlError = curl_error($ch);
+        list($response, $httpCode, $curlError) = self::httpRequest(
+            $this->pluginConfig->discoveryUrl,
+            'GET',
+            array(),
+            null,
+            10,
+            5
+        );
 
         if ($httpCode != 200 || empty($response)) {
             if (!empty($curlError)) {
@@ -785,16 +766,14 @@ class Action extends Base implements ActionInterface
         }
 
         if ($jwks === null) {
-            $ch = curl_init();
-            curl_setopt($ch, CURLOPT_URL, $discoveryData['jwks_uri']);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);
-            $response = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            list($response, $httpCode) = self::httpRequest(
+                $discoveryData['jwks_uri'],
+                'GET',
+                array(),
+                null,
+                10,
+                5
+            );
 
             if ($httpCode != 200 || empty($response)) {
                 return false;
@@ -886,6 +865,44 @@ class Action extends Base implements ActionInterface
             $data .= str_repeat('=', 4 - $remainder);
         }
         return base64_decode(strtr($data, '-_', '+/'), true);
+    }
+
+    /**
+     * 统一的 cURL 请求封装
+     *
+     * @param string $url
+     * @param string $method GET|POST
+     * @param array $headers
+     * @param string|null $body POST body
+     * @param int $timeout 总超时（秒）
+     * @param int $connectTimeout 连接超时（秒）
+     * @return array{0:string|false,1:int,2:string} [response, httpCode, curlError]
+     */
+    private static function httpRequest($url, $method, $headers, $body, $timeout, $connectTimeout)
+    {
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, $connectTimeout);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);
+        if (strtoupper($method) === 'POST') {
+            curl_setopt($ch, CURLOPT_POST, true);
+            if ($body !== null) {
+                curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+            }
+        }
+        if (!empty($headers)) {
+            curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        }
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+
+        return array($response, $httpCode, $curlError);
     }
 
     /**
