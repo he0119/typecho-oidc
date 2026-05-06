@@ -347,30 +347,27 @@ class Action extends Base implements ActionInterface
 
         $redirectUri = Common::url('/oidc/callback', $this->options->index);
 
-        // 构建请求头
-        $authString = $this->pluginConfig->clientId . ':' . $this->pluginConfig->clientSecret;
-        $authHeader = 'Basic ' . base64_encode($authString);
-
-        $headers = array(
-            'Authorization: ' . $authHeader,
-            'Content-Type: application/x-www-form-urlencoded'
-        );
-
         // 构建请求体（带 PKCE code_verifier）
         $postData = array(
             'grant_type' => 'authorization_code',
             'code' => $code,
             'redirect_uri' => $redirectUri,
-            'scope' => $this->pluginConfig->scope,
             'code_verifier' => $codeVerifier
         );
+
+        $authMethods = array();
+        if (!empty($discoveryData['token_endpoint_auth_methods_supported']) && is_array($discoveryData['token_endpoint_auth_methods_supported'])) {
+            $authMethods = $discoveryData['token_endpoint_auth_methods_supported'];
+        }
+
+        $request = $this->buildTokenRequest($postData, $authMethods);
 
         // 发送请求
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $discoveryData['token_endpoint']);
         curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($request['post_data']));
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $request['headers']);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, 30);
         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
@@ -384,19 +381,88 @@ class Action extends Base implements ActionInterface
 
         if (!empty($curlError)) {
             self::logSafe('OIDC: 获取 Token 失败 - ' . $curlError);
-        }
-
-        if ($httpCode != 200 || empty($response)) {
             return false;
         }
 
-        $responseData = json_decode($response, true);
+        $responseData = json_decode((string) $response, true);
 
-        if (json_last_error() !== JSON_ERROR_NONE || empty($responseData['access_token'])) {
+        if ($httpCode != 200 || empty($response) || json_last_error() !== JSON_ERROR_NONE) {
+            $detail = 'HTTP ' . $httpCode;
+            if (is_array($responseData) && !empty($responseData['error'])) {
+                $detail .= ' ' . $responseData['error'];
+                if (!empty($responseData['error_description'])) {
+                    $detail .= ': ' . $responseData['error_description'];
+                }
+            }
+            self::logSafe('OIDC: 获取 Token 失败 - ' . $detail);
+            return false;
+        }
+
+        if (empty($responseData['access_token'])) {
+            self::logSafe('OIDC: 获取 Token 失败 - 响应缺少 access_token');
             return false;
         }
 
         return $responseData;
+    }
+
+    /**
+     * 根据 discovery 选择 token endpoint 的客户端认证方式
+     *
+     * 优先级：client_secret_basic > client_secret_post > none。
+     * discovery 未声明时按 RFC 6749 默认使用 client_secret_basic。
+     *
+     * @param array $postData token 请求体
+     * @param array $authMethods discovery 声明的认证方式
+     * @return array{headers: string[], post_data: array}
+     */
+    private function buildTokenRequest($postData, $authMethods)
+    {
+        $clientId = $this->pluginConfig->clientId;
+        $clientSecret = $this->pluginConfig->clientSecret;
+
+        $hasSecret = $clientSecret !== '';
+        $supports = function ($method) use ($authMethods) {
+            return in_array($method, $authMethods, true);
+        };
+
+        $useBasic = $hasSecret && (empty($authMethods) || $supports('client_secret_basic'));
+        $usePost = !$useBasic && $hasSecret && $supports('client_secret_post');
+        $useNone = !$useBasic && !$usePost && !$hasSecret && $supports('none');
+
+        if ($useBasic) {
+            return array(
+                'headers' => array(
+                    'Authorization: Basic ' . base64_encode($clientId . ':' . $clientSecret),
+                    'Content-Type: application/x-www-form-urlencoded'
+                ),
+                'post_data' => $postData
+            );
+        }
+
+        if ($usePost) {
+            $postData['client_id'] = $clientId;
+            $postData['client_secret'] = $clientSecret;
+            return array(
+                'headers' => array('Content-Type: application/x-www-form-urlencoded'),
+                'post_data' => $postData
+            );
+        }
+
+        if ($useNone) {
+            $postData['client_id'] = $clientId;
+            return array(
+                'headers' => array('Content-Type: application/x-www-form-urlencoded'),
+                'post_data' => $postData
+            );
+        }
+
+        // 兜底：有 secret 时按 RFC 6749 默认用 Basic
+        $postData['client_id'] = $clientId;
+        return array(
+            'headers' => array('Content-Type: application/x-www-form-urlencoded'),
+            'post_data' => $postData
+        );
     }
 
     /**
