@@ -457,7 +457,18 @@ class Action extends Base implements ActionInterface
             );
         }
 
-        // 兜底：有 secret 时按 RFC 6749 默认用 Basic
+        // 兜底：discovery 未声明任何已支持的认证方式时，按 RFC 6749 默认用 Basic
+        if ($hasSecret) {
+            return array(
+                'headers' => array(
+                    'Authorization: Basic ' . base64_encode($clientId . ':' . $clientSecret),
+                    'Content-Type: application/x-www-form-urlencoded'
+                ),
+                'post_data' => $postData
+            );
+        }
+
+        // 公共客户端无 secret，按 client_secret_post 形式仅带 client_id
         $postData['client_id'] = $clientId;
         return array(
             'headers' => array('Content-Type: application/x-www-form-urlencoded'),
