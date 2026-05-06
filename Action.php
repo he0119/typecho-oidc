@@ -757,50 +757,64 @@ class Action extends Base implements ActionInterface
             return false;
         }
 
-        // 简单的 Session 缓存
-        $this->startSession();
-        $cacheKey = 'oidc_jwks_' . md5($discoveryData['jwks_uri']);
-        $jwks = null;
-        if (isset($_SESSION[$cacheKey]) && $_SESSION[$cacheKey]['expires_at'] > time()) {
-            $jwks = $_SESSION[$cacheKey]['data'];
+        $jwks = $this->fetchJwks($discoveryData['jwks_uri'], false);
+        $matched = $jwks ? self::matchJwk($jwks, $kid) : null;
+
+        // kid 不匹配时强制刷新（IdP 可能轮换了密钥）
+        if (!$matched && $kid !== null) {
+            $jwks = $this->fetchJwks($discoveryData['jwks_uri'], true);
+            $matched = $jwks ? self::matchJwk($jwks, $kid) : null;
         }
 
-        if ($jwks === null) {
-            list($response, $httpCode) = self::httpRequest(
-                $discoveryData['jwks_uri'],
-                'GET',
-                array(),
-                null,
-                10,
-                5
-            );
-
-            if ($httpCode != 200 || empty($response)) {
-                return false;
-            }
-            $jwks = json_decode($response, true);
-            if (!is_array($jwks) || empty($jwks['keys'])) {
-                return false;
-            }
-            $_SESSION[$cacheKey] = array('data' => $jwks, 'expires_at' => time() + 3600);
-        }
-
-        // 匹配 kid（无 kid 时取第一个 RSA 公钥）
-        $matched = null;
-        foreach ($jwks['keys'] as $key) {
-            if (!isset($key['kty']) || $key['kty'] !== 'RSA') {
-                continue;
-            }
-            if ($kid === null || (isset($key['kid']) && $key['kid'] === $kid)) {
-                $matched = $key;
-                break;
-            }
-        }
         if (!$matched || empty($matched['n']) || empty($matched['e'])) {
             return false;
         }
 
         return self::rsaJwkToPem($matched['n'], $matched['e']);
+    }
+
+    /**
+     * 拉取 JWKS（含 Session 缓存，1 小时）
+     *
+     * @param string $jwksUri
+     * @param bool $forceRefresh 强制跳过缓存
+     * @return array|false
+     */
+    private function fetchJwks($jwksUri, $forceRefresh)
+    {
+        $this->startSession();
+        $cacheKey = 'oidc_jwks_' . md5($jwksUri);
+
+        if (!$forceRefresh && isset($_SESSION[$cacheKey]) && $_SESSION[$cacheKey]['expires_at'] > time()) {
+            return $_SESSION[$cacheKey]['data'];
+        }
+
+        list($response, $httpCode) = self::httpRequest($jwksUri, 'GET', array(), null, 10, 5);
+        if ($httpCode != 200 || empty($response)) {
+            return false;
+        }
+        $jwks = json_decode($response, true);
+        if (!is_array($jwks) || empty($jwks['keys'])) {
+            return false;
+        }
+        $_SESSION[$cacheKey] = array('data' => $jwks, 'expires_at' => time() + 3600);
+        return $jwks;
+    }
+
+    /**
+     * 在 JWKS 中匹配 kid（无 kid 时取第一个 RSA 公钥）
+     */
+    private static function matchJwk($jwks, $kid)
+    {
+        foreach ($jwks['keys'] as $key) {
+            if (!isset($key['kty']) || $key['kty'] !== 'RSA') {
+                continue;
+            }
+            if ($kid === null || (isset($key['kid']) && $key['kid'] === $kid)) {
+                return $key;
+            }
+        }
+        return null;
     }
 
     /**
