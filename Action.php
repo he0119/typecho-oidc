@@ -56,6 +56,10 @@ class Action extends Base implements ActionInterface
 
         switch ($do) {
             case 'unbind':
+                if (strtoupper(isset($_SERVER['REQUEST_METHOD']) ? $_SERVER['REQUEST_METHOD'] : '') !== 'POST') {
+                    $this->response->setStatus(405);
+                    exit;
+                }
                 $this->unbind();
                 break;
             default:
@@ -180,11 +184,7 @@ class Action extends Base implements ActionInterface
      */
     public function unbind()
     {
-        $bindingId = $this->request->get('binding_id');
-        if (empty($bindingId)) {
-            $bindingId = $this->request->post('binding_id');
-        }
-        $bindingId = intval($bindingId);
+        $bindingId = intval($this->request->post('binding_id'));
 
         if ($bindingId <= 0) {
             $this->notice->set(_t('无效的绑定ID'), 'error');
@@ -277,9 +277,8 @@ class Action extends Base implements ActionInterface
      */
     private function handleBinding($userInfo)
     {
-        // 检查用户是否已经登录
+        // 未绑定的 OIDC 账户首次登录：要求先登录 Typecho 才能完成绑定
         if (!$this->user->hasLogin()) {
-            // 用户未登录，提示需要先登录
             $this->loginError('请先登录 Typecho 账户，然后在 OIDC 绑定管理页面进行绑定');
         }
 
@@ -308,11 +307,6 @@ class Action extends Base implements ActionInterface
                         'created_at' => time()
                     ))
             );
-
-            // 确保用户已登录
-            if (!$this->user->hasLogin()) {
-                $this->user->simpleLogin($this->user->uid, false);
-            }
 
             // 添加成功提示
             $this->notice->set(_t('OIDC 账户绑定成功'), 'success');
