@@ -381,7 +381,6 @@ class Action extends Base implements ActionInterface
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $curlError = curl_error($ch);
-        curl_close($ch);
 
         if (!empty($curlError)) {
             self::logSafe('OIDC: 获取 Token 失败 - ' . $curlError);
@@ -432,7 +431,6 @@ class Action extends Base implements ActionInterface
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $curlError = curl_error($ch);
-        curl_close($ch);
 
         if (!empty($curlError)) {
             self::logSafe('OIDC: 获取 UserInfo 失败 - ' . $curlError);
@@ -493,7 +491,6 @@ class Action extends Base implements ActionInterface
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $curlError = curl_error($ch);
-        curl_close($ch);
 
         if ($httpCode != 200 || empty($response)) {
             if (!empty($curlError)) {
@@ -727,7 +724,6 @@ class Action extends Base implements ActionInterface
             curl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);
             $response = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
 
             if ($httpCode != 200 || empty($response)) {
                 return false;
