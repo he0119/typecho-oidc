@@ -521,17 +521,10 @@ class Action extends Base implements ActionInterface
      */
     private function getDiscoveryData()
     {
-        // 确保 session 已启动
-        $this->startSession();
-
-        // 检查是否有缓存
-        $cacheKey = 'oidc_discovery_' . md5($this->pluginConfig->discoveryUrl);
-
-        if (isset($_SESSION[$cacheKey])) {
-            $data = $_SESSION[$cacheKey];
-            if ($data && isset($data['expires_at']) && $data['expires_at'] > time()) {
-                return $data['data'];
-            }
+        $cacheKey = 'discovery_' . md5($this->pluginConfig->discoveryUrl);
+        $cached = self::cacheGet($cacheKey);
+        if ($cached !== null) {
+            return $cached;
         }
 
         // 获取发现文档
@@ -556,11 +549,8 @@ class Action extends Base implements ActionInterface
             return false;
         }
 
-        // 缓存数据到 Session（1 小时）
-        $_SESSION[$cacheKey] = array(
-            'data' => $discoveryData,
-            'expires_at' => time() + 3600
-        );
+        // 缓存数据（1 小时）
+        self::cacheSet($cacheKey, $discoveryData, 3600);
 
         return $discoveryData;
     }
@@ -782,11 +772,12 @@ class Action extends Base implements ActionInterface
      */
     private function fetchJwks($jwksUri, $forceRefresh)
     {
-        $this->startSession();
-        $cacheKey = 'oidc_jwks_' . md5($jwksUri);
-
-        if (!$forceRefresh && isset($_SESSION[$cacheKey]) && $_SESSION[$cacheKey]['expires_at'] > time()) {
-            return $_SESSION[$cacheKey]['data'];
+        $cacheKey = 'jwks_' . md5($jwksUri);
+        if (!$forceRefresh) {
+            $cached = self::cacheGet($cacheKey);
+            if ($cached !== null) {
+                return $cached;
+            }
         }
 
         list($response, $httpCode) = self::httpRequest($jwksUri, 'GET', array(), null, 10, 5);
@@ -797,7 +788,7 @@ class Action extends Base implements ActionInterface
         if (!is_array($jwks) || empty($jwks['keys'])) {
             return false;
         }
-        $_SESSION[$cacheKey] = array('data' => $jwks, 'expires_at' => time() + 3600);
+        self::cacheSet($cacheKey, $jwks, 3600);
         return $jwks;
     }
 
@@ -879,6 +870,65 @@ class Action extends Base implements ActionInterface
             $data .= str_repeat('=', 4 - $remainder);
         }
         return base64_decode(strtr($data, '-_', '+/'), true);
+    }
+
+    /**
+     * 获取插件缓存目录（不存在则创建）
+     *
+     * @return string|false
+     */
+    private static function cacheDir()
+    {
+        $dir = __DIR__ . DIRECTORY_SEPARATOR . 'cache';
+        if (!is_dir($dir)) {
+            if (!@mkdir($dir, 0750, true) && !is_dir($dir)) {
+                return false;
+            }
+            // 防止缓存目录被列目录或直接访问 PHP 文件
+            @file_put_contents($dir . DIRECTORY_SEPARATOR . 'index.html', '');
+        }
+        return $dir;
+    }
+
+    /**
+     * 读取文件缓存
+     *
+     * @param string $key
+     * @return mixed|null 命中返回数据，未命中或过期返回 null
+     */
+    private static function cacheGet($key)
+    {
+        $dir = self::cacheDir();
+        if ($dir === false) {
+            return null;
+        }
+        $file = $dir . DIRECTORY_SEPARATOR . preg_replace('/[^a-zA-Z0-9_]/', '_', $key) . '.cache';
+        if (!is_file($file)) {
+            return null;
+        }
+        $raw = @file_get_contents($file);
+        if ($raw === false) {
+            return null;
+        }
+        $entry = @unserialize($raw);
+        if (!is_array($entry) || empty($entry['expires_at']) || $entry['expires_at'] <= time()) {
+            return null;
+        }
+        return isset($entry['data']) ? $entry['data'] : null;
+    }
+
+    /**
+     * 写入文件缓存
+     */
+    private static function cacheSet($key, $data, $ttl)
+    {
+        $dir = self::cacheDir();
+        if ($dir === false) {
+            return;
+        }
+        $file = $dir . DIRECTORY_SEPARATOR . preg_replace('/[^a-zA-Z0-9_]/', '_', $key) . '.cache';
+        $entry = serialize(array('data' => $data, 'expires_at' => time() + $ttl));
+        @file_put_contents($file, $entry, LOCK_EX);
     }
 
     /**
