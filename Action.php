@@ -139,11 +139,11 @@ class Action extends Base implements ActionInterface
             $this->loginError('State 验证失败，可能存在 CSRF 攻击');
         }
 
-        // 获取 token（带 PKCE code_verifier）
-        $tokenData = $this->getAccessToken($code, $stateBundle['code_verifier']);
+        // 获取 token 响应（带 PKCE code_verifier）
+        $tokenData = $this->getTokenResponse($code, $stateBundle['code_verifier']);
 
-        if (empty($tokenData) || empty($tokenData['access_token'])) {
-            $this->loginError('获取 Access Token 失败');
+        if (empty($tokenData)) {
+            $this->loginError('获取 Token 响应失败');
         }
 
         // 验证 ID Token（必须存在）
@@ -156,20 +156,8 @@ class Action extends Base implements ActionInterface
             $this->loginError('ID Token 验证失败');
         }
 
-        // 以 ID Token 的 iss/sub 为权威来源；UserInfo 可用时作为额外校验和补充信息
+        // 以已验证 ID Token 的 iss/sub 作为权威身份来源
         $userInfo = $idTokenClaims;
-        $userInfoFromEndpoint = $this->getUserInfo($tokenData['access_token']);
-        if (!empty($userInfoFromEndpoint)) {
-            // OIDC 规范：UserInfo 的 sub 必须与 ID Token 的 sub 一致
-            if (!isset($userInfoFromEndpoint['sub'])
-                || !hash_equals((string) $idTokenClaims['sub'], (string) $userInfoFromEndpoint['sub'])) {
-                $this->loginError('UserInfo 的 sub 与 ID Token 不一致');
-            }
-            $userInfo = array_merge($userInfo, $userInfoFromEndpoint);
-        } else {
-            self::logSafe('OIDC: UserInfo 不可用，使用 ID Token claims 继续登录');
-        }
-
         $userInfo['iss'] = $idTokenClaims['iss'];
         $userInfo['sub'] = $idTokenClaims['sub'];
 
@@ -377,13 +365,13 @@ class Action extends Base implements ActionInterface
     // ==================== 私有 OIDC 协议方法 ====================
 
     /**
-     * 获取访问令牌和 ID Token
+     * 获取 Token 响应
      *
      * @param string $code 授权码
      * @param string $codeVerifier PKCE code_verifier
-     * @return array|false 包含 access_token 和 id_token 的数组或 false
+     * @return array|false Token 响应数组或 false
      */
-    private function getAccessToken($code, $codeVerifier)
+    private function getTokenResponse($code, $codeVerifier)
     {
         // 确定 token 端点 URL
         $discoveryData = $this->getDiscoveryData();
@@ -434,11 +422,6 @@ class Action extends Base implements ActionInterface
                 }
             }
             self::logSafe('OIDC: 获取 Token 失败 - ' . $detail);
-            return false;
-        }
-
-        if (empty($responseData['access_token'])) {
-            self::logSafe('OIDC: 获取 Token 失败 - 响应缺少 access_token');
             return false;
         }
 
@@ -525,57 +508,6 @@ class Action extends Base implements ActionInterface
     private static function basicAuthHeader($clientId, $clientSecret)
     {
         return 'Authorization: Basic ' . base64_encode(rawurlencode($clientId) . ':' . rawurlencode($clientSecret));
-    }
-
-    /**
-     * 从 UserInfo 端点获取用户信息
-     *
-     * @param string $accessToken Access Token
-     * @param object $pluginConfig 插件配置
-     * @return array|false 用户信息数组或 false
-     */
-    private function getUserInfo($accessToken)
-    {
-        // 获取 UserInfo 端点
-        $discoveryData = $this->getDiscoveryData();
-        if (empty($discoveryData['userinfo_endpoint'])) {
-            self::logSafe('OIDC: 无法获取 UserInfo 端点');
-            return false;
-        }
-
-        // 调用 UserInfo 端点
-        list($response, $httpCode, $curlError) = self::httpRequest(
-            $discoveryData['userinfo_endpoint'],
-            'GET',
-            array('Authorization: Bearer ' . $accessToken),
-            null,
-            10,
-            5
-        );
-
-        if (!empty($curlError)) {
-            self::logSafe('OIDC: 获取 UserInfo 失败 - ' . $curlError);
-            return false;
-        }
-
-        if ($httpCode != 200 || empty($response)) {
-            self::logSafe('OIDC: UserInfo 端点返回错误: HTTP ' . $httpCode);
-            return false;
-        }
-
-        $userInfo = json_decode($response, true);
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            self::logSafe('OIDC: 无法解析 UserInfo 响应');
-            return false;
-        }
-
-        // 验证必需字段
-        if (empty($userInfo['sub'])) {
-            self::logSafe('OIDC: UserInfo 缺少 sub 字段');
-            return false;
-        }
-
-        return $userInfo;
     }
 
     /**

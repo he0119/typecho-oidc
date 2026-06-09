@@ -52,7 +52,7 @@ git clone https://github.com/he0119/typecho-oidc.git Oidc
 - 登录请求使用 `state`、`nonce` 和 PKCE，state 支持多个并发登录窗口
 - ID Token 会校验签名、`iss`、`aud`、`azp`、`exp`、`iat`、`nbf` 和 `nonce`
 - 当前支持 `HS256`、`RS256/RS384/RS512`、`ES256/ES384/ES512`
-- UserInfo 端点可用时会校验其 `sub` 与 ID Token 一致；不可用时使用已验证的 ID Token claims
+- 插件不请求 UserInfo，登录和绑定只使用已验证 ID Token 中的 `iss + sub`
 - 账号绑定使用 OIDC `iss + sub` 作为唯一身份，不依赖邮箱或用户名
 - Discovery 和 JWKS 会缓存到插件目录下的 `cache/`，该目录已加入 `.gitignore`
 
