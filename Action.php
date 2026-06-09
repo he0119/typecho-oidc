@@ -195,13 +195,17 @@ class Action extends Base implements ActionInterface
             $prefix = $db->getPrefix();
 
             // 确保只能解绑自己的账户
-            $db->query(
+            $affectedRows = $db->query(
                 $db->delete($prefix . 'oidc_bindings')
                     ->where('id = ?', $bindingId)
                     ->where('uid = ?', $this->user->uid)
             );
 
-            $this->notice->set(_t('解绑成功'), 'success');
+            if ($affectedRows > 0) {
+                $this->notice->set(_t('解绑成功'), 'success');
+            } else {
+                $this->notice->set(_t('绑定不存在或无权解绑'), 'error');
+            }
         } catch (Exception $e) {
             self::logSafe('OIDC 解绑错误: ' . $e->getMessage());
             $this->notice->set(_t('解绑失败，请稍后重试'), 'error');
@@ -281,6 +285,22 @@ class Action extends Base implements ActionInterface
             );
 
             if ($binding) {
+                $boundUser = $db->fetchRow(
+                    $db->select('uid')->from('table.users')
+                        ->where('uid = ?', $binding['uid'])
+                        ->limit(1)
+                );
+
+                if (empty($boundUser)) {
+                    $db->query(
+                        $db->delete($prefix . 'oidc_bindings')
+                            ->where('uid = ?', $binding['uid'])
+                            ->where('iss = ?', $iss)
+                            ->where('sub = ?', $sub)
+                    );
+                    $this->loginError('绑定的 Typecho 账户不存在，请重新绑定');
+                }
+
                 // 找到绑定，重新生成 Session ID（防止 Session 固定攻击）
                 session_regenerate_id(true);
 
