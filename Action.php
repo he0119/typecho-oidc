@@ -14,6 +14,9 @@ if (!defined('__TYPECHO_ROOT_DIR__')) {
 
 class Action extends Base implements ActionInterface
 {
+    const STATE_TTL = 600;
+    const MAX_STATE_BUNDLES = 10;
+
     /**
      * 插件配置
      */
@@ -87,13 +90,8 @@ class Action extends Base implements ActionInterface
         $codeVerifier = self::base64UrlEncode(random_bytes(32));
         $codeChallenge = self::base64UrlEncode(hash('sha256', $codeVerifier, true));
 
-        // 存入 Session，有效期 5 分钟
-        $_SESSION['oidc_state'] = array(
-            'value' => $state,
-            'nonce' => $nonce,
-            'code_verifier' => $codeVerifier,
-            'expires_at' => time() + 300
-        );
+        // 存入 Session，有效期 10 分钟，支持多个并发登录窗口
+        $this->storeStateBundle($state, $nonce, $codeVerifier);
 
         // 构建授权 URL
         $redirectUri = Common::url('/oidc/callback', $this->options->index);
@@ -614,17 +612,44 @@ class Action extends Base implements ActionInterface
     {
         // 确保 session 已启动
         $this->startSession();
+        $this->pruneStateBundles();
 
         if (empty($state)) {
             return false;
         }
 
+        if (!empty($_SESSION['oidc_states']) && is_array($_SESSION['oidc_states'])
+            && !empty($_SESSION['oidc_states'][$state])) {
+            $storedStateData = $_SESSION['oidc_states'][$state];
+            unset($_SESSION['oidc_states'][$state]);
+
+            if (empty($_SESSION['oidc_states'])) {
+                unset($_SESSION['oidc_states']);
+            }
+
+            if (!is_array($storedStateData)
+                || empty($storedStateData['value'])
+                || empty($storedStateData['expires_at'])
+                || empty($storedStateData['nonce'])
+                || empty($storedStateData['code_verifier'])
+                || !hash_equals($storedStateData['value'], $state)) {
+                return false;
+            }
+
+            if (time() > $storedStateData['expires_at']) {
+                return false;
+            }
+
+            return $storedStateData;
+        }
+
+        // 兼容旧版本单槽位 state
         if (empty($_SESSION['oidc_state'])) {
             return false;
         }
 
         $storedStateData = $_SESSION['oidc_state'];
-        if (!is_array($storedStateData) || empty($storedStateData['value'])) {
+        if (!is_array($storedStateData) || empty($storedStateData['value']) || empty($storedStateData['expires_at'])) {
             return false;
         }
 
@@ -644,6 +669,58 @@ class Action extends Base implements ActionInterface
         unset($_SESSION['oidc_state']);
 
         return $storedStateData;
+    }
+
+    /**
+     * 保存 OIDC state bundle
+     */
+    private function storeStateBundle($state, $nonce, $codeVerifier)
+    {
+        $this->pruneStateBundles();
+
+        if (empty($_SESSION['oidc_states']) || !is_array($_SESSION['oidc_states'])) {
+            $_SESSION['oidc_states'] = array();
+        }
+
+        $_SESSION['oidc_states'][$state] = array(
+            'value' => $state,
+            'nonce' => $nonce,
+            'code_verifier' => $codeVerifier,
+            'expires_at' => time() + self::STATE_TTL
+        );
+
+        if (count($_SESSION['oidc_states']) > self::MAX_STATE_BUNDLES) {
+            uasort($_SESSION['oidc_states'], function ($left, $right) {
+                return $left['expires_at'] <=> $right['expires_at'];
+            });
+            $_SESSION['oidc_states'] = array_slice(
+                $_SESSION['oidc_states'],
+                -self::MAX_STATE_BUNDLES,
+                null,
+                true
+            );
+        }
+    }
+
+    /**
+     * 清理过期的 OIDC state bundle
+     */
+    private function pruneStateBundles()
+    {
+        if (empty($_SESSION['oidc_states']) || !is_array($_SESSION['oidc_states'])) {
+            return;
+        }
+
+        $now = time();
+        foreach ($_SESSION['oidc_states'] as $state => $bundle) {
+            if (!is_array($bundle) || empty($bundle['expires_at']) || $bundle['expires_at'] <= $now) {
+                unset($_SESSION['oidc_states'][$state]);
+            }
+        }
+
+        if (empty($_SESSION['oidc_states'])) {
+            unset($_SESSION['oidc_states']);
+        }
     }
 
     /**
@@ -676,6 +753,7 @@ class Action extends Base implements ActionInterface
         // 清理敏感的 Session 数据
         $this->startSession();
         unset($_SESSION['oidc_state']);
+        $this->pruneStateBundles();
 
         $errorMessage = $message;
         include dirname(__FILE__) . '/Error.php';
