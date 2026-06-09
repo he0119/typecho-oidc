@@ -157,12 +157,7 @@ class Action extends Base implements ActionInterface
         }
 
         // 以已验证 ID Token 的 iss/sub 作为权威身份来源
-        $userInfo = $idTokenClaims;
-        $userInfo['iss'] = $idTokenClaims['iss'];
-        $userInfo['sub'] = $idTokenClaims['sub'];
-
-        // 处理用户登录
-        $this->processUserLogin($userInfo);
+        $this->processUserLogin($idTokenClaims);
     }
 
     /**
@@ -245,22 +240,22 @@ class Action extends Base implements ActionInterface
     /**
      * 处理用户登录
      *
-     * @param array $userInfo 用户信息
+     * @param array $claims 已验证的 ID Token claims
      */
-    private function processUserLogin($userInfo)
+    private function processUserLogin($claims)
     {
         // 检查是否有 sub 字段
-        if (empty($userInfo['sub'])) {
-            $this->loginError('用户信息中缺少 sub 字段');
+        if (empty($claims['sub'])) {
+            $this->loginError('ID Token claims 中缺少 sub 字段');
         }
 
         // 检查是否有 iss 字段（OIDC issuer，作为 provider 标识）
-        if (empty($userInfo['iss'])) {
-            $this->loginError('用户信息中缺少 iss 字段');
+        if (empty($claims['iss'])) {
+            $this->loginError('ID Token claims 中缺少 iss 字段');
         }
 
-        $sub = $userInfo['sub'];
-        $iss = $userInfo['iss']; // OIDC Issuer
+        $sub = $claims['sub'];
+        $iss = $claims['iss']; // OIDC Issuer
         $db = Db::get();
         $prefix = $db->getPrefix();
 
@@ -303,7 +298,7 @@ class Action extends Base implements ActionInterface
                 }
             } else {
                 // 未找到绑定关系，需要先绑定
-                $this->handleBinding($userInfo);
+                $this->handleBinding($claims);
             }
         } catch (Exception $e) {
             self::logSafe('OIDC 登录错误: ' . $e->getMessage());
@@ -314,9 +309,9 @@ class Action extends Base implements ActionInterface
     /**
      * 处理绑定流程
      *
-     * @param array $userInfo 用户信息
+     * @param array $claims 已验证的 ID Token claims
      */
-    private function handleBinding($userInfo)
+    private function handleBinding($claims)
     {
         // 未绑定的 OIDC 账户首次登录：要求先登录 Typecho 才能完成绑定
         if (!$this->user->hasLogin()) {
@@ -330,8 +325,8 @@ class Action extends Base implements ActionInterface
             // 检查是否已经绑定（使用 iss + sub 组合）
             $existingBinding = $db->fetchRow(
                 $db->select()->from($prefix . 'oidc_bindings')
-                    ->where('iss = ?', $userInfo['iss'])
-                    ->where('sub = ?', $userInfo['sub'])
+                    ->where('iss = ?', $claims['iss'])
+                    ->where('sub = ?', $claims['sub'])
             );
 
             if ($existingBinding) {
@@ -343,8 +338,8 @@ class Action extends Base implements ActionInterface
                 $db->insert($prefix . 'oidc_bindings')
                     ->rows(array(
                         'uid' => $this->user->uid,
-                        'iss' => $userInfo['iss'],
-                        'sub' => $userInfo['sub'],
+                        'iss' => $claims['iss'],
+                        'sub' => $claims['sub'],
                         'created_at' => time()
                     ))
             );
