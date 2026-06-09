@@ -707,16 +707,45 @@ class Action extends Base implements ActionInterface
 
         $alg = isset($header['alg']) ? $header['alg'] : '';
         $signingInput = $headerB64 . '.' . $payloadB64;
+        $discoveryData = $this->getDiscoveryData();
+        if (!is_array($discoveryData)) {
+            self::logSafe('OIDC: 无法获取发现文档用于验证 ID Token');
+            return false;
+        }
+
+        if (empty($alg) || $alg === 'none') {
+            self::logSafe('OIDC: ID Token alg 无效');
+            return false;
+        }
+
+        if (!empty($discoveryData['id_token_signing_alg_values_supported'])
+            && is_array($discoveryData['id_token_signing_alg_values_supported'])
+            && !in_array($alg, $discoveryData['id_token_signing_alg_values_supported'], true)) {
+            self::logSafe('OIDC: ID Token alg 未被发现文档声明支持');
+            return false;
+        }
+        if (($alg === 'RS256' || $alg === 'RS384' || $alg === 'RS512'
+            || $alg === 'ES256' || $alg === 'ES384' || $alg === 'ES512')
+            && !function_exists('openssl_verify')) {
+            self::logSafe('OIDC: PHP OpenSSL 扩展不可用，无法验证 ID Token 签名');
+            return false;
+        }
 
         // 校验签名
         if ($alg === 'HS256') {
-            $expected = hash_hmac('sha256', $signingInput, $this->pluginConfig->clientSecret, true);
+            $clientSecret = (string) $this->pluginConfig->clientSecret;
+            if ($clientSecret === '') {
+                self::logSafe('OIDC: HS256 需要 Client Secret');
+                return false;
+            }
+
+            $expected = hash_hmac('sha256', $signingInput, $clientSecret, true);
             if (!hash_equals($expected, $signature)) {
                 self::logSafe('OIDC: ID Token HS256 签名验证失败');
                 return false;
             }
         } elseif ($alg === 'RS256' || $alg === 'RS384' || $alg === 'RS512') {
-            $publicKey = $this->getJwkPublicKey(isset($header['kid']) ? $header['kid'] : null);
+            $publicKey = $this->getJwkPublicKey(isset($header['kid']) ? $header['kid'] : null, $alg);
             if (!$publicKey) {
                 self::logSafe('OIDC: 无法获取匹配的 JWK 公钥');
                 return false;
@@ -727,13 +756,32 @@ class Action extends Base implements ActionInterface
                 self::logSafe('OIDC: ID Token RSA 签名验证失败');
                 return false;
             }
+        } elseif ($alg === 'ES256' || $alg === 'ES384' || $alg === 'ES512') {
+            $publicKey = $this->getJwkPublicKey(isset($header['kid']) ? $header['kid'] : null, $alg);
+            if (!$publicKey) {
+                self::logSafe('OIDC: 无法获取匹配的 JWK 公钥');
+                return false;
+            }
+
+            $signatureSize = $alg === 'ES256' ? 32 : ($alg === 'ES384' ? 48 : 66);
+            $derSignature = self::ecdsaJoseSignatureToDer($signature, $signatureSize);
+            if ($derSignature === false) {
+                self::logSafe('OIDC: ID Token ECDSA 签名格式无效');
+                return false;
+            }
+
+            $hashAlg = $alg === 'ES256' ? OPENSSL_ALGO_SHA256 : ($alg === 'ES384' ? OPENSSL_ALGO_SHA384 : OPENSSL_ALGO_SHA512);
+            $verified = openssl_verify($signingInput, $derSignature, $publicKey, $hashAlg);
+            if ($verified !== 1) {
+                self::logSafe('OIDC: ID Token ECDSA 签名验证失败');
+                return false;
+            }
         } else {
             self::logSafe('OIDC: 不支持的 ID Token 签名算法: ' . preg_replace('/[^A-Za-z0-9]/', '', (string) $alg));
             return false;
         }
 
         // 校验 claims
-        $discoveryData = $this->getDiscoveryData();
         $expectedIss = isset($discoveryData['issuer']) ? $discoveryData['issuer'] : '';
         if (empty($payload['iss']) || $payload['iss'] !== $expectedIss) {
             self::logSafe('OIDC: ID Token iss 不匹配');
@@ -757,12 +805,16 @@ class Action extends Base implements ActionInterface
 
         $now = time();
         $leeway = 60;
-        if (empty($payload['exp']) || $payload['exp'] + $leeway < $now) {
+        if (empty($payload['exp']) || !is_numeric($payload['exp']) || (int) $payload['exp'] + $leeway < $now) {
             self::logSafe('OIDC: ID Token 已过期');
             return false;
         }
-        if (isset($payload['iat']) && $payload['iat'] - $leeway > $now) {
+        if (isset($payload['iat']) && (!is_numeric($payload['iat']) || (int) $payload['iat'] - $leeway > $now)) {
             self::logSafe('OIDC: ID Token iat 在未来');
+            return false;
+        }
+        if (isset($payload['nbf']) && (!is_numeric($payload['nbf']) || (int) $payload['nbf'] - $leeway > $now)) {
+            self::logSafe('OIDC: ID Token nbf 在未来');
             return false;
         }
 
@@ -783,9 +835,10 @@ class Action extends Base implements ActionInterface
      * 从 jwks_uri 拉取并匹配公钥（PEM）
      *
      * @param string|null $kid Key ID
+     * @param string $alg JWT 签名算法
      * @return string|false PEM 公钥或 false
      */
-    private function getJwkPublicKey($kid)
+    private function getJwkPublicKey($kid, $alg)
     {
         $discoveryData = $this->getDiscoveryData();
         if (empty($discoveryData['jwks_uri'])) {
@@ -793,19 +846,33 @@ class Action extends Base implements ActionInterface
         }
 
         $jwks = $this->fetchJwks($discoveryData['jwks_uri'], false);
-        $matched = $jwks ? self::matchJwk($jwks, $kid) : null;
+        $matched = $jwks ? self::matchJwk($jwks, $kid, $alg) : null;
 
         // kid 不匹配时强制刷新（IdP 可能轮换了密钥）
         if (!$matched && $kid !== null) {
             $jwks = $this->fetchJwks($discoveryData['jwks_uri'], true);
-            $matched = $jwks ? self::matchJwk($jwks, $kid) : null;
+            $matched = $jwks ? self::matchJwk($jwks, $kid, $alg) : null;
         }
 
-        if (!$matched || empty($matched['n']) || empty($matched['e'])) {
+        if (!$matched || empty($matched['kty'])) {
             return false;
         }
 
-        return self::rsaJwkToPem($matched['n'], $matched['e']);
+        if ($matched['kty'] === 'RSA') {
+            if (empty($matched['n']) || empty($matched['e'])) {
+                return false;
+            }
+            return self::rsaJwkToPem($matched['n'], $matched['e']);
+        }
+
+        if ($matched['kty'] === 'EC') {
+            if (empty($matched['crv']) || empty($matched['x']) || empty($matched['y'])) {
+                return false;
+            }
+            return self::ecJwkToPem($matched['crv'], $matched['x'], $matched['y']);
+        }
+
+        return false;
     }
 
     /**
@@ -838,19 +905,69 @@ class Action extends Base implements ActionInterface
     }
 
     /**
-     * 在 JWKS 中匹配 kid（无 kid 时取第一个 RSA 公钥）
+     * 在 JWKS 中匹配 kid / alg / key use（无 kid 时取第一个匹配公钥）
      */
-    private static function matchJwk($jwks, $kid)
+    private static function matchJwk($jwks, $kid, $alg)
     {
+        $expectedKty = self::expectedJwkKty($alg);
         foreach ($jwks['keys'] as $key) {
-            if (!isset($key['kty']) || $key['kty'] !== 'RSA') {
+            if (!is_array($key) || empty($key['kty']) || $key['kty'] !== $expectedKty) {
                 continue;
             }
-            if ($kid === null || (isset($key['kid']) && $key['kid'] === $kid)) {
-                return $key;
+            if ($kid !== null && (!isset($key['kid']) || $key['kid'] !== $kid)) {
+                continue;
             }
+            if (isset($key['use']) && $key['use'] !== 'sig') {
+                continue;
+            }
+            if (isset($key['key_ops']) && is_array($key['key_ops']) && !in_array('verify', $key['key_ops'], true)) {
+                continue;
+            }
+            if (isset($key['alg']) && $key['alg'] !== $alg) {
+                continue;
+            }
+            if (!self::jwkCurveMatchesAlg($key, $alg)) {
+                continue;
+            }
+
+            return $key;
         }
         return null;
+    }
+
+    /**
+     * 根据 JWT alg 推导 JWK kty
+     *
+     * @param string $alg
+     * @return string|null
+     */
+    private static function expectedJwkKty($alg)
+    {
+        if ($alg === 'RS256' || $alg === 'RS384' || $alg === 'RS512') {
+            return 'RSA';
+        }
+        if ($alg === 'ES256' || $alg === 'ES384' || $alg === 'ES512') {
+            return 'EC';
+        }
+        return null;
+    }
+
+    /**
+     * 校验 EC JWK 曲线是否匹配 JWT alg
+     */
+    private static function jwkCurveMatchesAlg($key, $alg)
+    {
+        if (empty($key['crv'])) {
+            return true;
+        }
+
+        $curves = array(
+            'ES256' => 'P-256',
+            'ES384' => 'P-384',
+            'ES512' => 'P-521'
+        );
+
+        return empty($curves[$alg]) || $key['crv'] === $curves[$alg];
     }
 
     /**
@@ -860,7 +977,7 @@ class Action extends Base implements ActionInterface
     {
         $modulus = self::base64UrlDecode($n);
         $exponent = self::base64UrlDecode($e);
-        if ($modulus === false || $exponent === false) {
+        if ($modulus === false || $exponent === false || $modulus === '' || $exponent === '') {
             return false;
         }
 
@@ -878,6 +995,66 @@ class Action extends Base implements ActionInterface
         $spki = self::derEncodeSequence($rsaOid . $bitString);
 
         return "-----BEGIN PUBLIC KEY-----\n" . chunk_split(base64_encode($spki), 64, "\n") . "-----END PUBLIC KEY-----\n";
+    }
+
+    /**
+     * 将 EC JWK (crv, x, y) 转为 PEM 公钥
+     */
+    private static function ecJwkToPem($crv, $x, $y)
+    {
+        $x = self::base64UrlDecode($x);
+        $y = self::base64UrlDecode($y);
+        if ($x === false || $y === false || $x === '' || $y === '') {
+            return false;
+        }
+
+        $curveOids = array(
+            'P-256' => "\x06\x08\x2a\x86\x48\xce\x3d\x03\x01\x07",
+            'P-384' => "\x06\x05\x2b\x81\x04\x00\x22",
+            'P-521' => "\x06\x05\x2b\x81\x04\x00\x23"
+        );
+        if (empty($curveOids[$crv])) {
+            return false;
+        }
+
+        $ecPublicKeyOid = "\x06\x07\x2a\x86\x48\xce\x3d\x02\x01";
+        $algorithm = self::derEncodeSequence($ecPublicKeyOid . $curveOids[$crv]);
+        $publicKey = "\x04" . $x . $y;
+        $bitString = "\x03" . self::derEncodeLength(strlen($publicKey) + 1) . "\x00" . $publicKey;
+        $spki = self::derEncodeSequence($algorithm . $bitString);
+
+        return "-----BEGIN PUBLIC KEY-----\n" . chunk_split(base64_encode($spki), 64, "\n") . "-----END PUBLIC KEY-----\n";
+    }
+
+    /**
+     * 将 JOSE ECDSA 签名（r || s）转为 OpenSSL 需要的 DER 格式
+     *
+     * @param string $signature
+     * @param int $size 单个整数长度
+     * @return string|false
+     */
+    private static function ecdsaJoseSignatureToDer($signature, $size)
+    {
+        if (strlen($signature) !== $size * 2) {
+            return false;
+        }
+
+        $r = substr($signature, 0, $size);
+        $s = substr($signature, $size);
+
+        return self::derEncodeSequence(self::derEncodeUnsignedInteger($r) . self::derEncodeUnsignedInteger($s));
+    }
+
+    private static function derEncodeUnsignedInteger($value)
+    {
+        $value = ltrim($value, "\x00");
+        if ($value === '') {
+            $value = "\x00";
+        }
+        if (ord($value[0]) > 0x7f) {
+            $value = "\x00" . $value;
+        }
+        return self::derEncodeInteger($value);
     }
 
     private static function derEncodeLength($len)
