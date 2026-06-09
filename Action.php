@@ -45,7 +45,7 @@ class Action extends Base implements ActionInterface
     {
         // 检查用户是否登录
         if (!$this->user->hasLogin()) {
-            $this->response->redirect(Common::url('admin/login.php', $this->options->index));
+            $this->response->redirect(Common::url('login.php', $this->options->adminUrl));
             exit;
         }
 
@@ -188,7 +188,7 @@ class Action extends Base implements ActionInterface
 
         if ($bindingId <= 0) {
             $this->notice->set(_t('无效的绑定ID'), 'error');
-            $this->response->redirect(Common::url('admin/extending.php?panel=Oidc%2FPanel.php', $this->options->index));
+            $this->response->redirect(Common::url('extending.php?panel=Oidc%2FPanel.php', $this->options->adminUrl));
             exit;
         }
 
@@ -210,7 +210,7 @@ class Action extends Base implements ActionInterface
         }
 
         // 重定向回管理面板
-        $this->response->redirect(Common::url('admin/extending.php?panel=Oidc%2FPanel.php', $this->options->index));
+        $this->response->redirect(Common::url('extending.php?panel=Oidc%2FPanel.php', $this->options->adminUrl));
         exit;
     }
 
@@ -255,8 +255,7 @@ class Action extends Base implements ActionInterface
 
                 if ($this->user->hasLogin()) {
                     // 登录成功，跳转到后台
-                    $adminUrl = Common::url('admin/', $this->options->index);
-                    $this->response->redirect($adminUrl);
+                    $this->response->redirect($this->options->adminUrl);
                 } else {
                     $this->loginError('登录失败，请重试');
                 }
@@ -312,7 +311,7 @@ class Action extends Base implements ActionInterface
             $this->notice->set(_t('OIDC 账户绑定成功'), 'success');
 
             // 绑定成功，跳转到 OIDC 绑定管理面板
-            $panelUrl = Common::url('admin/extending.php?panel=Oidc%2FPanel.php', $this->options->index);
+            $panelUrl = Common::url('extending.php?panel=Oidc%2FPanel.php', $this->options->adminUrl);
             $this->response->redirect($panelUrl);
 
         } catch (Exception $e) {

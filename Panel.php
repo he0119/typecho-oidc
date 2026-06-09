@@ -19,7 +19,7 @@ $pluginConfig = $options->plugin('Oidc');
 
 $user = User::alloc();
 if (!$user->hasLogin()) {
-    header('Location: ' . Common::url('admin/login.php', $options->index));
+    header('Location: ' . Common::url('login.php', $options->adminUrl));
     exit;
 }
 
@@ -34,7 +34,7 @@ $bindings = $db->fetchAll(
 
 $systemName = !empty($pluginConfig->oidcSystemName) ? $pluginConfig->oidcSystemName : 'OIDC';
 $loginUrl = Common::url('/oidc/login', $options->index);
-$panelUrl = Common::url('admin/extending.php?panel=Oidc%2FPanel.php', $options->index);
+$panelUrl = Common::url('extending.php?panel=Oidc%2FPanel.php', $options->adminUrl);
 $unbindAction = Common::url('action/oidc?do=unbind', $options->index);
 
 Security::alloc()->to($security);
