@@ -158,18 +158,20 @@ class Action extends Base implements ActionInterface
             $this->loginError('ID Token 验证失败');
         }
 
-        // 使用 Access Token 获取用户信息
-        $userInfo = $this->getUserInfo($tokenData['access_token']);
-        if (empty($userInfo)) {
-            $this->loginError('获取用户信息失败');
+        // 以 ID Token 的 iss/sub 为权威来源；UserInfo 可用时作为额外校验和补充信息
+        $userInfo = $idTokenClaims;
+        $userInfoFromEndpoint = $this->getUserInfo($tokenData['access_token']);
+        if (!empty($userInfoFromEndpoint)) {
+            // OIDC 规范：UserInfo 的 sub 必须与 ID Token 的 sub 一致
+            if (!isset($userInfoFromEndpoint['sub'])
+                || !hash_equals((string) $idTokenClaims['sub'], (string) $userInfoFromEndpoint['sub'])) {
+                $this->loginError('UserInfo 的 sub 与 ID Token 不一致');
+            }
+            $userInfo = array_merge($userInfo, $userInfoFromEndpoint);
+        } else {
+            self::logSafe('OIDC: UserInfo 不可用，使用 ID Token claims 继续登录');
         }
 
-        // OIDC 规范：UserInfo 的 sub 必须与 ID Token 的 sub 一致
-        if (!isset($userInfo['sub']) || !hash_equals((string) $idTokenClaims['sub'], (string) $userInfo['sub'])) {
-            $this->loginError('UserInfo 的 sub 与 ID Token 不一致');
-        }
-
-        // 以 ID Token 的 iss/sub 为权威来源
         $userInfo['iss'] = $idTokenClaims['iss'];
         $userInfo['sub'] = $idTokenClaims['sub'];
 
