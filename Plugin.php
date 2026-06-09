@@ -146,7 +146,8 @@ class Plugin implements PluginInterface
             _t('OIDC 发现文档 URL'),
             _t('例如: https://your-oidc-provider/.well-known/openid_configuration<br/>配置此项后，其他 URL 将自动获取')
         );
-        $form->addInput($discoveryUrl);
+        $form->addInput($discoveryUrl->addRule('required', _t('请输入 OIDC 发现文档 URL'))
+            ->addRule('url', _t('请输入合法的 OIDC 发现文档 URL')));
 
 
         $oidcSystemName = new Form\Element\Text(
@@ -181,9 +182,9 @@ class Plugin implements PluginInterface
             null,
             'openid email profile',
             _t('Scope'),
-            _t('OIDC 作用域')
+            _t('OIDC 作用域，必须包含 openid')
         );
-        $form->addInput($scope);
+        $form->addInput($scope->addRule('required', _t('请输入 Scope')));
 
     }
 

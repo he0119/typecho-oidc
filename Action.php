@@ -76,9 +76,7 @@ class Action extends Base implements ActionInterface
     public function login()
     {
         // 检查配置是否完整
-        if (empty($this->pluginConfig->discoveryUrl) && empty($this->pluginConfig->clientId)) {
-            $this->loginError('OIDC 配置不完整，请联系管理员');
-        }
+        $this->validateLoginConfig();
 
         // 确保 session 已启动
         $this->startSession();
@@ -111,7 +109,7 @@ class Action extends Base implements ActionInterface
         $authorizeUrl .= '?client_id=' . urlencode($this->pluginConfig->clientId);
         $authorizeUrl .= '&response_type=code';
         $authorizeUrl .= '&redirect_uri=' . urlencode($redirectUri);
-        $authorizeUrl .= '&scope=' . urlencode($this->pluginConfig->scope);
+        $authorizeUrl .= '&scope=' . urlencode($this->getLoginScope());
         $authorizeUrl .= '&state=' . urlencode($state);
         $authorizeUrl .= '&nonce=' . urlencode($nonce);
         $authorizeUrl .= '&code_challenge=' . urlencode($codeChallenge);
@@ -215,6 +213,42 @@ class Action extends Base implements ActionInterface
     }
 
     // ==================== 私有核心业务方法 ====================
+
+    /**
+     * 校验登录所需的基础配置
+     */
+    private function validateLoginConfig()
+    {
+        $discoveryUrl = trim((string) $this->pluginConfig->discoveryUrl);
+        $clientId = trim((string) $this->pluginConfig->clientId);
+
+        if ($discoveryUrl === '' || $clientId === '') {
+            $this->loginError('OIDC 配置不完整，请联系管理员');
+        }
+
+        $scheme = parse_url($discoveryUrl, PHP_URL_SCHEME);
+        if (!in_array($scheme, array('http', 'https'), true)) {
+            $this->loginError('OIDC 发现文档 URL 格式无效，请联系管理员');
+        }
+    }
+
+    /**
+     * 获取登录 scope，并确保满足 OIDC 的 openid 要求
+     *
+     * @return string
+     */
+    private function getLoginScope()
+    {
+        $scope = trim((string) $this->pluginConfig->scope);
+        $scopes = preg_split('/\s+/', $scope, -1, PREG_SPLIT_NO_EMPTY);
+        if (empty($scopes)) {
+            $scopes = array('openid');
+        } elseif (!in_array('openid', $scopes, true)) {
+            array_unshift($scopes, 'openid');
+        }
+
+        return implode(' ', array_unique($scopes));
+    }
 
     /**
      * 处理用户登录
