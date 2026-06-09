@@ -173,9 +173,9 @@ class Plugin implements PluginInterface
             null,
             '',
             _t('Client Secret'),
-            _t('OIDC 客户端密钥')
+            _t('OIDC 客户端密钥；公共客户端可留空，但身份提供商必须支持 none 认证方式')
         );
-        $form->addInput($clientSecret->addRule('required', _t('请输入 Client Secret')));
+        $form->addInput($clientSecret);
 
         $scope = new Form\Element\Text(
             'scope',

@@ -437,8 +437,8 @@ class Action extends Base implements ActionInterface
      */
     private function buildTokenRequest($postData, $authMethods)
     {
-        $clientId = $this->pluginConfig->clientId;
-        $clientSecret = $this->pluginConfig->clientSecret;
+        $clientId = (string) $this->pluginConfig->clientId;
+        $clientSecret = (string) $this->pluginConfig->clientSecret;
 
         $hasSecret = $clientSecret !== '';
         $supports = function ($method) use ($authMethods) {
@@ -452,7 +452,7 @@ class Action extends Base implements ActionInterface
         if ($useBasic) {
             return array(
                 'headers' => array(
-                    'Authorization: Basic ' . base64_encode($clientId . ':' . $clientSecret),
+                    self::basicAuthHeader($clientId, $clientSecret),
                     'Content-Type: application/x-www-form-urlencoded'
                 ),
                 'post_data' => $postData
@@ -480,7 +480,7 @@ class Action extends Base implements ActionInterface
         if ($hasSecret) {
             return array(
                 'headers' => array(
-                    'Authorization: Basic ' . base64_encode($clientId . ':' . $clientSecret),
+                    self::basicAuthHeader($clientId, $clientSecret),
                     'Content-Type: application/x-www-form-urlencoded'
                 ),
                 'post_data' => $postData
@@ -493,6 +493,18 @@ class Action extends Base implements ActionInterface
             'headers' => array('Content-Type: application/x-www-form-urlencoded'),
             'post_data' => $postData
         );
+    }
+
+    /**
+     * 生成 OAuth2 client_secret_basic 认证头
+     *
+     * @param string $clientId
+     * @param string $clientSecret
+     * @return string
+     */
+    private static function basicAuthHeader($clientId, $clientSecret)
+    {
+        return 'Authorization: Basic ' . base64_encode(rawurlencode($clientId) . ':' . rawurlencode($clientSecret));
     }
 
     /**
