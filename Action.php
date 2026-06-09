@@ -1266,7 +1266,15 @@ class Action extends Base implements ActionInterface
      */
     private static function httpRequest($url, $method, $headers, $body, $timeout, $connectTimeout)
     {
+        if (!function_exists('curl_init')) {
+            return array(false, 0, 'PHP cURL 扩展不可用');
+        }
+
         $ch = curl_init();
+        if ($ch === false) {
+            return array(false, 0, '初始化 cURL 失败');
+        }
+
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
@@ -1287,6 +1295,7 @@ class Action extends Base implements ActionInterface
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $curlError = curl_error($ch);
+        curl_close($ch);
 
         return array($response, $httpCode, $curlError);
     }
