@@ -10,7 +10,7 @@ if (!defined('__TYPECHO_ROOT_DIR__'))
 $options = Options::alloc();
 $siteTitle = $options->title;
 $indexUrl = Common::url('/', $options->index);
-$loginUrl = Common::url('admin/login.php', $options->index);
+$loginUrl = Common::url('login.php', $options->adminUrl);
 ?>
 <!DOCTYPE HTML>
 <html>
@@ -21,9 +21,9 @@ $loginUrl = Common::url('admin/login.php', $options->index);
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
     <title><?php _e('OIDC 登录错误'); ?> - <?php echo htmlspecialchars($siteTitle); ?></title>
     <meta name="robots" content="noindex, nofollow">
-    <link rel="stylesheet" href="<?php echo Common::url('admin/css/normalize.css', $options->index); ?>">
-    <link rel="stylesheet" href="<?php echo Common::url('admin/css/grid.css', $options->index); ?>">
-    <link rel="stylesheet" href="<?php echo Common::url('admin/css/style.css', $options->index); ?>">
+    <link rel="stylesheet" href="<?php echo Common::url('css/normalize.css', $options->adminUrl); ?>">
+    <link rel="stylesheet" href="<?php echo Common::url('css/grid.css', $options->adminUrl); ?>">
+    <link rel="stylesheet" href="<?php echo Common::url('css/style.css', $options->adminUrl); ?>">
     <style>
         .typecho-login-wrap {
             display: table;

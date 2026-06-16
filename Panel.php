@@ -10,34 +10,34 @@ use Widget\User;
 if (!defined('__TYPECHO_ROOT_DIR__'))
     exit;
 
-// 引入公共文件
 include 'common.php';
 include 'header.php';
 include 'menu.php';
 
-// 获取配置
 $options = Options::alloc();
 $pluginConfig = $options->plugin('Oidc');
 
-// 获取当前用户
 $user = User::alloc();
 if (!$user->hasLogin()) {
-    header('Location: ' . Common::url('admin/login.php', $options->index));
+    header('Location: ' . Common::url('login.php', $options->adminUrl));
     exit;
 }
 
 $db = Db::get();
 $prefix = $db->getPrefix();
 
-// 获取当前用户的所有绑定
 $bindings = $db->fetchAll(
     $db->select()->from($prefix . 'oidc_bindings')
         ->where('uid = ?', $user->uid)
         ->order('created_at', Db::SORT_DESC)
 );
 
-// 获取系统名称
 $systemName = !empty($pluginConfig->oidcSystemName) ? $pluginConfig->oidcSystemName : 'OIDC';
+$loginUrl = Common::url('/oidc/login', $options->index);
+$panelUrl = Common::url('extending.php?panel=Oidc%2FPanel.php', $options->adminUrl);
+$unbindAction = Common::url('action/oidc?do=unbind', $options->index);
+
+Security::alloc()->to($security);
 ?>
 
 <main class="main">
@@ -45,16 +45,21 @@ $systemName = !empty($pluginConfig->oidcSystemName) ? $pluginConfig->oidcSystemN
         <?php include 'page-title.php'; ?>
         <div class="row typecho-page-main" role="main">
             <div class="col-mb-12 typecho-list">
-                <?php if (!empty($bindings)): ?>
-                    <h4 class="typecho-list-table-title"><?php _e('已绑定的 %s 账户', $systemName); ?></h4>
-                <?php endif; ?>
+
+                <div class="typecho-list-operate clearfix">
+                    <div class="operate">
+                        <a href="<?php echo $loginUrl; ?>" class="btn btn-s primary">
+                            <?php _e('+ 绑定 %s 账户', $systemName); ?>
+                        </a>
+                    </div>
+                </div>
 
                 <table class="typecho-list-table">
                     <colgroup>
                         <col width="25%" />
-                        <col width="35%" />
-                        <col width="20%" class="kit-hidden-mb" />
                         <col width="" />
+                        <col width="20%" class="kit-hidden-mb" />
+                        <col width="10%" />
                     </colgroup>
                     <thead>
                         <tr>
@@ -67,48 +72,38 @@ $systemName = !empty($pluginConfig->oidcSystemName) ? $pluginConfig->oidcSystemN
                     <tbody>
                         <?php if (empty($bindings)): ?>
                             <tr>
-                                <td colspan="4" style="text-align: center; padding: 40px 20px; color: #999;">
-                                    <p style="margin: 0 0 15px 0; font-size: 14px;">
-                                        <?php _e('暂无绑定的 %s 账户', $systemName); ?>
-                                    </p>
-                                    <a href="<?php echo Common::url('/oidc/login', $options->index); ?>" class="btn primary"
-                                        style="margin-top: 10px;">
-                                        <?php _e('立即绑定 %s 账户', $systemName); ?>
-                                    </a>
+                                <td colspan="4" class="none">
+                                    <?php _e('暂未绑定 %s 账户', $systemName); ?>
                                 </td>
                             </tr>
                         <?php else: ?>
-                            <?php foreach ($bindings as $binding): ?>
+                            <?php foreach ($bindings as $binding):
+                                $issHost = parse_url($binding['iss'], PHP_URL_HOST);
+                                if (empty($issHost)) {
+                                    $issHost = $binding['iss'];
+                                }
+                                ?>
                                 <tr id="binding-<?php echo $binding['id']; ?>">
                                     <td>
                                         <span title="<?php echo htmlspecialchars($binding['iss']); ?>">
-                                            <?php
-                                            // 简化显示 issuer
-                                            $iss = $binding['iss'];
-                                            $issDisplay = parse_url($iss, PHP_URL_HOST);
-                                            if (empty($issDisplay)) {
-                                                $issDisplay = $iss;
-                                            }
-                                            echo htmlspecialchars($issDisplay);
-                                            ?>
+                                            <?php echo htmlspecialchars($issHost); ?>
                                         </span>
                                     </td>
                                     <td>
-                                        <code
-                                            style="background: #f5f5f5; padding: 2px 6px; border-radius: 3px; font-size: 12px;"><?php echo htmlspecialchars($binding['sub']); ?></code>
+                                        <code class="oidc-sub"><?php echo htmlspecialchars($binding['sub']); ?></code>
                                     </td>
                                     <td class="kit-hidden-mb">
-                                        <?php echo date('Y-m-d H:i:s', $binding['created_at']); ?>
+                                        <span class="description">
+                                            <?php echo date('Y-m-d H:i', $binding['created_at']); ?>
+                                        </span>
                                     </td>
                                     <td>
-                                        <form method="post"
-                                            action="<?php echo Common::url('action/oidc?do=unbind', $options->index); ?>"
-                                            style="display: inline;">
-                                            <?php Security::alloc()->to($security); ?>
+                                        <form method="post" action="<?php echo $unbindAction; ?>" class="oidc-unbind-form">
                                             <input type="hidden" name="_"
-                                                value="<?php echo $security->getToken(Common::url('admin/extending.php?panel=Oidc%2FPanel.php', $options->index)); ?>" />
+                                                value="<?php echo $security->getToken($panelUrl); ?>" />
                                             <input type="hidden" name="binding_id" value="<?php echo $binding['id']; ?>" />
-                                            <button type="submit" class="unbind-btn">
+                                            <button type="submit" class="btn btn-xs btn-warn"
+                                                lang="<?php _e('确定要解绑此 %s 账户吗？', $systemName); ?>">
                                                 <?php _e('解绑'); ?>
                                             </button>
                                         </form>
@@ -119,20 +114,29 @@ $systemName = !empty($pluginConfig->oidcSystemName) ? $pluginConfig->oidcSystemN
                     </tbody>
                 </table>
 
-                <div
-                    style="margin-top: 30px; padding: 15px 20px; background: #fffbea; border: 1px solid #ffe58f; border-radius: 3px;">
-                    <h4 style="margin: 0 0 10px 0; color: #875d00; font-size: 14px;"><?php _e('使用说明'); ?></h4>
-                    <ul style="margin: 5px 0; padding-left: 20px; color: #666; font-size: 13px; line-height: 1.8;">
-                        <li><?php _e('绑定 %s 账户后，可以使用该账户快速登录', $systemName); ?></li>
-                        <li><?php _e('一个 Typecho 账户只能绑定一个 %s 账户', $systemName); ?></li>
-                        <li><?php _e('解绑后，将无法使用该 %s 账户登录，但不影响其他登录方式', $systemName); ?></li>
-                    </ul>
-                </div>
+                <p class="description">
+                    <?php _e('绑定 %s 账户后可使用该账户快速登录；一个 Typecho 账户可绑定多个不同的 %s 账户；解绑不影响其他登录方式。', $systemName, $systemName); ?>
+                </p>
 
             </div>
         </div>
     </div>
 </main>
+
+<style>
+    .oidc-sub {
+        background: #f5f5f5;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 12px;
+        word-break: break-all;
+    }
+
+    .oidc-unbind-form {
+        display: inline;
+        margin: 0;
+    }
+</style>
 
 <?php
 include 'copyright.php';
@@ -141,9 +145,9 @@ include 'common-js.php';
 <script>
     (function () {
         $(document).ready(function () {
-            // 为解绑按钮添加确认对话框
-            $('.unbind-btn').click(function (e) {
-                if (!confirm('<?php _e('确定要解绑此账户吗？'); ?>')) {
+            $('.oidc-unbind-form button').on('click', function (e) {
+                var msg = $(this).attr('lang');
+                if (msg && !confirm(msg)) {
                     e.preventDefault();
                     return false;
                 }
@@ -151,25 +155,6 @@ include 'common-js.php';
         });
     })();
 </script>
-<style>
-    /* 解绑按钮样式 */
-    .unbind-btn {
-        background: none;
-        border: none;
-        padding: 0;
-        color: #467b96;
-        cursor: pointer;
-        font-size: inherit;
-        font-family: inherit;
-        text-decoration: none;
-    }
-
-    .unbind-btn:hover {
-        color: #e47e00;
-        text-decoration: underline;
-    }
-</style>
 <?php
 include 'footer.php';
 ?>
-
